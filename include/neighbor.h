@@ -123,10 +123,17 @@ struct SimpleNeighbors {
   std::vector<SimpleNeighbor> pool;
 };
 
+/**
+ * 将 nn插入到 集合addr中， 期望集合的大小不要超过K， 插入后保持顺序。
+ * 其中addr是距离query 从小到大排列
+*/
 static inline int InsertIntoPool(Neighbor *addr, unsigned K, Neighbor nn) {
   // find the location to insert
   int left = 0, right = K - 1;
+
+  // 比最短的点还要短，直接插入到第一个位置。
   if (addr[left].distance > nn.distance) {
+    // 将从addr left 开始的内存整块移动到left+1的位置，块大小为 K个Neighbor结构的大小
     memmove((char *)&addr[left + 1], &addr[left], K * sizeof(Neighbor));
     addr[left] = nn;
     return left;
@@ -135,6 +142,8 @@ static inline int InsertIntoPool(Neighbor *addr, unsigned K, Neighbor nn) {
     addr[K] = nn;
     return K;
   }
+
+  // 二分查找
   while (left < right - 1) {
     int mid = (left + right) / 2;
     if (addr[mid].distance > nn.distance)
@@ -146,7 +155,7 @@ static inline int InsertIntoPool(Neighbor *addr, unsigned K, Neighbor nn) {
 
   while (left > 0) {
     if (addr[left].distance < nn.distance) break;
-    if (addr[left].id == nn.id) return K + 1;
+    if (addr[left].id == nn.id) return K + 1;  //检查ID相等的情况
     left--;
   }
   if (addr[left].id == nn.id || addr[right].id == nn.id) return K + 1;

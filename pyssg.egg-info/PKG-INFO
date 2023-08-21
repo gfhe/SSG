@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: pyssg
+Version: 0.1
+Summary: Python library for SSG algorithm
+Author: Changxu Wang
+Author-email: changxu.mail@gmail.com
+License-File: LICENSE

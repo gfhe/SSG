@@ -38,6 +38,12 @@ void IndexSSG::Save(const char *filename) {
   out.close();
 }
 
+/**
+ * 加载ssg index，
+ * 加载顺序：
+ * width --> ep 数量 -> ep 数据 -> 加载索引(顶点邻居数 k-> 读取 k 个邻居)。
+ *  
+*/
 void IndexSSG::Load(const char *filename) {
   std::ifstream in(filename, std::ios::binary);
   in.read((char *)&width, sizeof(unsigned));
@@ -60,6 +66,9 @@ void IndexSSG::Load(const char *filename) {
   std::cerr << "Average Degree = " << cc << std::endl;
 }
 
+/**
+ * 加载knn graph 
+*/
 void IndexSSG::Load_nn_graph(const char *filename) {
   std::ifstream in(filename, std::ios::binary);
   unsigned k;
@@ -408,60 +417,88 @@ void IndexSSG::Build(size_t n, const float *data,
   has_built = true;
 }
 
+/**
+ * 搜索，返回近似最近邻top K
+ * query: 查询点
+ * x: 原始数据
+ * K: top K
+ * parameters: 参数配置
+ * indices: 结果id列表
+*/
 void IndexSSG::Search(const float *query, const float *x, size_t K,
                       const Parameters &parameters, unsigned *indices) {
   const unsigned L = parameters.Get<unsigned>("L_search");
   data_ = x;
-  std::vector<Neighbor> retset(L + 1);
+  std::vector<Neighbor> retset(L + 1);   // 返回的结果顶点id记录集合
   std::vector<unsigned> init_ids(L);
-  boost::dynamic_bitset<> flags{nd_, 0};
+  boost::dynamic_bitset<> flags{nd_, 0}; // 节点是否可以访问，true 表示可以访问。
   std::mt19937 rng(rand());
   GenRandom(rng, init_ids.data(), L, (unsigned)nd_);
+
+  // 导航点集合 -> init_ids
   assert(eps_.size() < L);
   for(unsigned i=0; i<eps_.size(); i++){
     init_ids[i] = eps_[i];
   }
 
+  // 构造访问点与query的距离信息，初始化结果数据结构Neighbor。
   for (unsigned i = 0; i < L; i++) {
     unsigned id = init_ids[i];
     float dist = distance_->compare(data_ + dimension_ * id, query,
                                     (unsigned)dimension_);
     retset[i] = Neighbor(id, dist, true);
-    flags[id] = true;
+    flags[id] = true; 
   }
 
+  // 排序retset， 贪心方法，距离query最近的点深度递归，最可能找到最近的点。
   std::sort(retset.begin(), retset.begin() + L);
+  
+  // 从距离query 点最近的点开始逐个遍历它们的邻居节点。
   int k = 0;
   while (k < (int)L) {
     int nk = L;
 
     if (retset[k].flag) {
       retset[k].flag = false;
-      unsigned n = retset[k].id;
+      unsigned n = retset[k].id;  // 当前跳id
 
-      for (unsigned m = 0; m < final_graph_[n].size(); ++m) {
+      // 遍历所有邻居，不断的更新retset集合。
+      for (unsigned m = 0; m < final_graph_[n].size(); ++m) { //final_graph_[n]表示id为n的顶点的邻居列表。
         unsigned id = final_graph_[n][m];
         if (flags[id]) continue;
         flags[id] = 1;
         float dist = distance_->compare(query, data_ + dimension_ * id,
                                         (unsigned)dimension_);
-        if (dist >= retset[L - 1].distance) continue;
-        Neighbor nn(id, dist, true);
-        int r = InsertIntoPool(retset.data(), L, nn);
+        if (dist >= retset[L - 1].distance) continue; // 如果当前跳的邻居顶点距离query太远（retset是排好序的集合，当前dist比最大的距离还大，即过远），则不会进入候选集合retset。
 
-        if (r < nk) nk = r;
+        // 发现更近的点，更新 候选集和 retset
+        Neighbor nn(id, dist, true);
+        int r = InsertIntoPool(retset.data(), L, nn); // 插入nn到候选集和，并获取插入的位置。
+
+        if (r < nk) nk = r;   // 如果正常插入（即找到了距离query 更小的顶点）， 则更新nk=r。 nk作为一个是从id=n的邻居中，是否存在有效的顶点，是否更新的标志。
       }
     }
+    // TODO：为什么从头上，直接跳到了nk？？？？不合理啊，那么k-nk间的顶点不探索了？为什么可以这样？
+    // 否则，继续从小向大遍历retset集合， 继续探索下一个点的邻居点。
     if (nk <= k)
       k = nk;
     else
       ++k;
   }
+
+  // 获取结果id列表
   for (size_t i = 0; i < K; i++) {
     indices[i] = retset[i].id;
   }
 }
 
+
+/**
+ * 优化搜索：
+ * 1. bitset 优化内存和效率；
+ * 2. _mm_prefetch SMID 数据预读取技术；
+ * 3. 将图正则化？？
+*/
 void IndexSSG::SearchWithOptGraph(const float *query, size_t K,
                                   const Parameters &parameters,
                                   unsigned *indices) {
@@ -477,6 +514,7 @@ void IndexSSG::SearchWithOptGraph(const float *query, size_t K,
     init_ids[i] = eps_[i];
   }
 
+  // 使用bitmap 优化 列表，节省内存和提升效率。
   boost::dynamic_bitset<> flags{nd_, 0};
   for (unsigned i = 0; i < init_ids.size(); i++) {
     unsigned id = init_ids[i];
@@ -539,26 +577,31 @@ void IndexSSG::SearchWithOptGraph(const float *query, size_t K,
   }
 }
 
+/**
+ * 优化底层数据存储结构，
+ * 多少个顶点 X 每个顶点占用的内存长度（顶点自生的数据 + 最多邻居 一起占用的内存长度）
+*/
 void IndexSSG::OptimizeGraph(const float *data) {  // use after build or load
 
   data_ = data;
   data_len = (dimension_ + 1) * sizeof(float);
   neighbor_len = (width + 1) * sizeof(unsigned);
-  node_size = data_len + neighbor_len;
-  opt_graph_ = (char *)malloc(node_size * nd_);
+  node_size = data_len + neighbor_len;  // 当前点的id，向量数据 + 邻居长度
+  opt_graph_ = (char *)malloc(node_size * nd_); 
   DistanceFastL2 *dist_fast = (DistanceFastL2 *)distance_;
   for (unsigned i = 0; i < nd_; i++) {
-    char *cur_node_offset = opt_graph_ + i * node_size;
-    float cur_norm = dist_fast->norm(data_ + i * dimension_, dimension_);
-    std::memcpy(cur_node_offset, &cur_norm, sizeof(float));
+    char *cur_node_offset = opt_graph_ + i * node_size;  //对于第i个顶点，起始内存地址。
+    float cur_norm = dist_fast->norm(data_ + i * dimension_, dimension_); // TODO： 什么意思？？？id为什么算norm？？？
+    std::memcpy(cur_node_offset, &cur_norm, sizeof(float));  // 移动id到优化的图结构中。
     std::memcpy(cur_node_offset + sizeof(float), data_ + i * dimension_,
-                data_len - sizeof(float));
+                data_len - sizeof(float));  //将数据移动到优化的图结构中。
 
+    // 拷贝邻居信息
     cur_node_offset += data_len;
     unsigned k = final_graph_[i].size();
-    std::memcpy(cur_node_offset, &k, sizeof(unsigned));
+    std::memcpy(cur_node_offset, &k, sizeof(unsigned)); // 邻居数
     std::memcpy(cur_node_offset + sizeof(unsigned), final_graph_[i].data(),
-                k * sizeof(unsigned));
+                k * sizeof(unsigned)); // 所有邻居 数据。
     std::vector<unsigned>().swap(final_graph_[i]);
   }
   CompactGraph().swap(final_graph_);

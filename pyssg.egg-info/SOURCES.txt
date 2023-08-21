@@ -1,0 +1,9 @@
+LICENSE
+README.md
+setup.py
+pyssg.egg-info/PKG-INFO
+pyssg.egg-info/SOURCES.txt
+pyssg.egg-info/dependency_links.txt
+pyssg.egg-info/not-zip-safe
+pyssg.egg-info/top_level.txt
+tests/test_python_query.py
