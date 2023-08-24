@@ -6,6 +6,7 @@
 #include "parameters.h"
 #include "index_random.h"
 #include "index_ssg.h"
+#include "index_graph.h"
 
 #define NUMPY_C_STYLE py::array::c_style | py:array::forcecast
 
@@ -26,6 +27,25 @@ void set_seed(int seed) {
 PYBIND11_MODULE(pyssg, m) {
     m.def("set_seed", &set_seed, "Set C++ random seed");
     m.def("load_data", &efanna2e::load_data, "Load data from SIFT-style binary file");
+    m.def("build_efanna", [](std::string graph, array data, size_t num_data, unsigned dim,
+        unsigned k,unsigned l, unsigned iter, unsigned s, unsigned r){
+        efanna2e::IndexRandom init_index(dim, num_data);
+        efanna2e::IndexGraph index(dim, num_data, efanna2e::L2, (efanna2e::Index*)(&init_index));
+
+        efanna2e::Parameters paras;
+        paras.Set<unsigned>("K", k);
+        paras.Set<unsigned>("L", l);
+        paras.Set<unsigned>("iter", iter);
+        paras.Set<unsigned>("S", s);
+        paras.Set<unsigned>("R", r);
+
+        std::cout << "build efanna index..." << std::endl;
+        index.Build(num_data, data.data(), paras);
+
+        std::cout << "saving efanna index..." << std::endl;
+        index.Save(graph.c_str());
+
+    }, "Build efanna index from data");
 
     // Metric
     py::enum_<Metric>(m, "Metric")
@@ -71,11 +91,38 @@ PYBIND11_MODULE(pyssg, m) {
             return index;
         }), py::arg("dim"), py::arg("num_data"), py::arg("metric") = Metric::FAST_L2)
 
-        .def("build", [](IndexSSG& index, array query, size_t k, unsigned l){
+        /**
+         * Build index from data
+         * 控制索引构建的参数有：
+         * L：参数的值越大，会考虑更多的邻居节点，可以得到更多的启发，但同时也会增加算法的计算复杂度。
+         * R：参数的值越大，会捕捉到图中更长的依赖关系，有助于提高准确率，但同时也会增加计算复杂度。L > R
+         * A：控制两个边的角度，角度越大，则图裁剪的越厉害，图中的边越少，计算复杂度越低，但同时也会损失一些准确率。
+         * 
+         * @param graph: path to knn graph file, not ssg graph
+         * @param data: data array, 2D numpy array
+         * @param num_data: number of data points in data
+         * @param l: L parameter for ssg algorithm, controls the quality of the NSG, the larger the better, L > R
+         * @param r: R parameter for ssg algorithm, controls the index size of the graph, the best R is related to the intrinsic dimension of the dataset.
+         * @param a: A parameter for ssg graph construction, controls the angle between two edges
+         * @param n_try: n_try parameter for DFS search algorithm, used in IndexSSG::DFS_expand()
+         * 
+        */
+        .def("build", [](IndexSSG& index, std::string graph, array data, size_t num_data, unsigned dim,
+        unsigned l, unsigned r, unsigned a, unsigned n_try){
+            float* data_load = efanna2e::data_align(data.mutable_data(), num_data, dim);
+
             // Construct Parameters object
             Parameters params;
-            params.Set<unsigned>("L_search", l);
+            params.Set<unsigned>("L", l);
+            params.Set<unsigned>("R", r);
+            params.Set<unsigned>("A", a);
+            params.Set<unsigned>("n_try", n_try);
+            params.Set<std::string>("nn_graph_path", graph);
 
+            std::cout << "start build graph..." << std::endl;
+            // Do Build SSG from previous knn graph
+            index.Build(num_data, data_load, params);
+            std::cout << "build graph done" << std::endl;
         })
 
         /* Load SSG graph along with data */

@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 11)
 list(
     APPEND CPP_SOURCES
     index.cpp
+    index_graph.cpp
     index_random.cpp
     index_ssg.cpp
     util.cpp

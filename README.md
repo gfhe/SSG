@@ -216,3 +216,10 @@ Here we provide our pre-built kNN graphs and SSG index files used in our papar's
 | GIST1M    | [gist_400nn.knng](http://downloads.zjulearning.org.cn/ssg/gist_400nn.knng) | [gist.ssg](http://downloads.zjulearning.org.cn/ssg/gist.ssg)  |
 | Crawl     | [crawl_400nn.knng](http://downloads.zjulearning.org.cn/ssg/crawl_400nn.knng) | [crawl.ssg](http://downloads.zjulearning.org.cn/ssg/crawl.ssg)  |
 | GloVe-100 | [glove_400nn.knng](http://downloads.zjulearning.org.cn/ssg/glove-100_400nn.knng) | [glove.ssg](http://downloads.zjulearning.org.cn/ssg/glove-100.ssg)  |
+
+
+
+# 变更
+
+1. 增加了efanna 的index_graph.h和cpp文件，支持直接创建efanna index
+2. 增加了IndexSSG.Build 方法，支持python 调用Build。
