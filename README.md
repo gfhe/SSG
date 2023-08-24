@@ -51,15 +51,19 @@ How to use
 ### Compile
 
 * Prerequisite : openmp, cmake, boost
+    ```
+    sudo apt update
+    sudo apt install g++ cmake libboost-dev libgoogle-perftools-dev
+    ```
 * Compile:
     1. Go to the root directory of faiss, it's under the directory of extern_libraries aside of ours.
     2. Execute the following commands:
-
-```bash
-$ cd /path/to/project
-$ mkdir -p build && cd build
-$ cmake .. && make -j
-```
+        ```bash
+        $ cd /path/to/project
+        $ cd third_party/pybind11 && git submodule update --init --recursive && cd -
+        $ mkdir -p build && cd build
+        $ cmake .. && make -j
+        ```
 
 ### Building SSG Index
 

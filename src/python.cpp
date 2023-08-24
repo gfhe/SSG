@@ -71,7 +71,12 @@ PYBIND11_MODULE(pyssg, m) {
             return index;
         }), py::arg("dim"), py::arg("num_data"), py::arg("metric") = Metric::FAST_L2)
 
-        // .def("build", &IndexSSG::Build)  # Currently only search
+        .def("build", [](IndexSSG& index, array query, size_t k, unsigned l){
+            // Construct Parameters object
+            Parameters params;
+            params.Set<unsigned>("L_search", l);
+
+        })
 
         /* Load SSG graph along with data */
         .def("load", [](IndexSSG& index,
