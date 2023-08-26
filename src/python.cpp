@@ -27,25 +27,25 @@ void set_seed(int seed) {
 PYBIND11_MODULE(pyssg, m) {
     m.def("set_seed", &set_seed, "Set C++ random seed");
     m.def("load_data", &efanna2e::load_data, "Load data from SIFT-style binary file");
-    m.def("build_efanna", [](std::string graph, array data, size_t num_data, unsigned dim,
-        unsigned k,unsigned l, unsigned iter, unsigned s, unsigned r){
-        efanna2e::IndexRandom init_index(dim, num_data);
-        efanna2e::IndexGraph index(dim, num_data, efanna2e::L2, (efanna2e::Index*)(&init_index));
+    // m.def("build_efanna", [](std::string graph, array data, size_t num_data, unsigned dim,
+    //     unsigned k,unsigned l, unsigned iter, unsigned s, unsigned r){
+    //     efanna2e::IndexRandom init_index(dim, num_data);
+    //     efanna2e::IndexGraph index(dim, num_data, efanna2e::L2, (efanna2e::Index*)(&init_index));
 
-        efanna2e::Parameters paras;
-        paras.Set<unsigned>("K", k);
-        paras.Set<unsigned>("L", l);
-        paras.Set<unsigned>("iter", iter);
-        paras.Set<unsigned>("S", s);
-        paras.Set<unsigned>("R", r);
+    //     efanna2e::Parameters paras;
+    //     paras.Set<unsigned>("K", k);
+    //     paras.Set<unsigned>("L", l);
+    //     paras.Set<unsigned>("iter", iter);
+    //     paras.Set<unsigned>("S", s);
+    //     paras.Set<unsigned>("R", r);
 
-        std::cout << "build efanna index..." << std::endl;
-        index.Build(num_data, data.data(), paras);
+    //     std::cout << "build efanna index..." << std::endl;
+    //     index.Build(num_data, data.data(), paras);
 
-        std::cout << "saving efanna index..." << std::endl;
-        index.Save(graph.c_str());
+    //     std::cout << "saving efanna index..." << std::endl;
+    //     index.Save(graph.c_str());
 
-    }, "Build efanna index from data");
+    // }, "Build efanna index from data");
 
     // Metric
     py::enum_<Metric>(m, "Metric")

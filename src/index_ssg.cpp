@@ -359,10 +359,13 @@ void IndexSSG::Build(size_t n, const float *data,
   std::string nn_graph_path = parameters.Get<std::string>("nn_graph_path");
   unsigned range = parameters.Get<unsigned>("R");
   Load_nn_graph(nn_graph_path.c_str());
+  std::cout << "nn graph loaded" << std::endl;
   data_ = data;
   init_graph(parameters);
+  std::cout << "graph inited" << std::endl;
   SimpleNeighbor *cut_graph_ = new SimpleNeighbor[nd_ * (size_t)range];
   Link(parameters, cut_graph_);
+  std::cout << "graph lined" << std::endl;
   final_graph_.resize(nd_);
 
   for (size_t i = 0; i < nd_; i++) {
@@ -382,6 +385,7 @@ void IndexSSG::Build(size_t n, const float *data,
   }
 
   DFS_expand(parameters);
+  std::cout << "graph DFS_expand" << std::endl;
 
   unsigned max, min, avg;
   max = 0;
