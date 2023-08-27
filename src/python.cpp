@@ -131,6 +131,9 @@ PYBIND11_MODULE(pyssg, m) {
             index.Load(graph.c_str());
             index.OptimizeGraph(data.data());
         })
+        .def("norm", [](IndexSSG& index, array data) {
+            return index.norm(data.data(), data.shape()[1]);
+        })
 
         /* Save graph to file */
         .def("save", &IndexSSG::Save)
@@ -139,10 +142,12 @@ PYBIND11_MODULE(pyssg, m) {
             @param query: an 1-D numpy array represents query
             @param k: number of neighbors to search for
             @param l: L parameter for search algorithm
+            @param flag: 0 for search with optimized graph;1 for condition search; 2 for condition search with optimized candidate set;
+            @param threshold: percentage of unqualified(condition=false) candidates
 
             @return a list contains K neighbors' indices (start from 0)
          */
-        .def("search", [](IndexSSG& index, array query, size_t k, unsigned l)
+        .def("search", [](IndexSSG& index, array query, size_t k, unsigned l, unsigned flag, float threshold)
                           -> std::vector<unsigned> {
             // NOTE: This lambda function will convert numpy array to raw pointer
 
@@ -161,7 +166,14 @@ PYBIND11_MODULE(pyssg, m) {
             std::vector<unsigned> indices(k);
 
             // Do Search
-            index.SearchWithOptGraph(query.data(), k, params, indices.data());
+            if (flag == 0)
+                index.SearchWithOptGraph(query.data(), k, params, indices.data());
+            else if (flag == 1)
+                index.FilterSearchWithOptGraph(query.data(), k, params, indices.data());
+            else if (flag == 2)
+                index.TolerantFilterSearchWithOptGraph(query.data(), k, params, indices.data(), threshold);
+            else
+                throw py::value_error("Invalid flag");
 
             return indices;
         });

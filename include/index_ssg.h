@@ -23,6 +23,7 @@ class IndexSSG : public Index {
   virtual ~IndexSSG();
 
   virtual void Save(const char *filename) override;
+  // virtual void SaveOptimizeGraph(const char *filename);
   virtual void Load(const char *filename) override;
 
   virtual void Build(size_t n, const float *data,
@@ -32,7 +33,25 @@ class IndexSSG : public Index {
                       const Parameters &parameters, unsigned *indices) override;
   void SearchWithOptGraph(const float *query, size_t K,
                           const Parameters &parameters, unsigned *indices);
+
+  void Condition();
+  void FilterSearchWithOptGraph(const float *query, size_t K,
+                                  const Parameters &parameters,
+                                  unsigned *indices) ;
+  void TolerantFilterSearchWithOptGraph(const float *query, size_t K,
+                                  const Parameters &parameters,
+                                  unsigned *indices, float threshold) ;
   void OptimizeGraph(const float *data);
+
+  float norm(const float *a, unsigned size) const{
+    for(int j=0; j<size; j++) {
+      std::cout << a[j] << " "; 
+    }
+    std:: cout << std::endl;
+    DistanceFastL2 *dist_fast = (DistanceFastL2 *)distance_;
+    float cur_norm = dist_fast->norm(a, size);
+    return cur_norm;
+  }
 
  protected:
   typedef std::vector<std::vector<unsigned>> CompactGraph;
@@ -75,6 +94,8 @@ class IndexSSG : public Index {
   size_t data_len;
   size_t neighbor_len;
   KNNGraph nnd_graph;
+  // 模拟过滤条件
+  boost::dynamic_bitset<> condition;
 };
 
 }  // namespace efanna2e

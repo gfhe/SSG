@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
 
   auto s = std::chrono::high_resolution_clock::now();
   index.Build(points_num, data_load, paras);
+  index.OptimizeGraph(data_load);
   auto e = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = e - s;
   std::cout << "Build Time: " << diff.count() << "\n";

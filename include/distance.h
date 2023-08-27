@@ -230,6 +230,16 @@ class DistanceInnerProduct : public Distance {
 };
 class DistanceFastL2 : public DistanceInnerProduct {
  public:
+  /**
+   * 并行计算L2范数
+   * 1. 从DistanceInnerProduct继承的compare()计算两个向量的内积a·b。
+   * 2. norm()函数利用SSE/AVX指令集并行计算一个向量的L2正则化平方和a·a。
+      根据欧式距离的定义,两个向量间的L2距离为:
+      dist = sqrt(a·a + b·b - 2a·b)
+   * 3. 这里做了化简,直接计算-2a·b + a·a + b·b,避免求平方根,但距离结果仍保持排名一致。
+   * SSE/AVX指令集可以并行计算4/8个float的运算,优化了向量运算的性能。
+   * 所以该实现通过并行内积和正则化的计算,避免求平方根,实现了比直接L2距离计算更加高效的两向量间快速L2距离。保持了距离排名的一致性。
+  */
   float norm(const float *a, unsigned size) const {
     float result = 0;
 #ifdef __GNUC__

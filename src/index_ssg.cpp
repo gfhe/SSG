@@ -24,6 +24,7 @@ IndexSSG::~IndexSSG() {}
 
 void IndexSSG::Save(const char *filename) {
   std::ofstream out(filename, std::ios::binary | std::ios::out);
+  std::cout << "Saving index, final_graph_.size= " << final_graph_.size() << ", nd_=" << nd_ << std::endl;
   assert(final_graph_.size() == nd_);
 
   out.write((char *)&width, sizeof(unsigned));
@@ -64,6 +65,8 @@ void IndexSSG::Load(const char *filename) {
   }
   cc /= nd_;
   std::cerr << "Average Degree = " << cc << std::endl;
+
+  Condition();
 }
 
 /**
@@ -554,6 +557,8 @@ void IndexSSG::SearchWithOptGraph(const float *query, size_t K,
       neighbors++;
       for (unsigned m = 0; m < MaxM; ++m)
         _mm_prefetch(opt_graph_ + node_size * neighbors[m], _MM_HINT_T0);
+
+      // 处理每个邻居，判断是否需要
       for (unsigned m = 0; m < MaxM; ++m) {
         unsigned id = neighbors[m];
         if (flags[id]) continue;
@@ -581,21 +586,117 @@ void IndexSSG::SearchWithOptGraph(const float *query, size_t K,
   }
 }
 
+void IndexSSG::Condition(){
+    // 构造随机的条件集合
+  std::mt19937 rng(rand());
+  std::uniform_int_distribution<> dis(0, 1);
+  boost::dynamic_bitset<> condition(nd_);
+  for (int i = 0; i < nd_; ++i) {
+      bool value = dis(rng);  // 生成随机的True或False值
+      condition[i] = value;   // 将值设置到条件集合中的相应位置
+  }
+}
+
+void IndexSSG::FilterSearchWithOptGraph(const float *query, size_t K,
+                                  const Parameters &parameters,
+                                  unsigned *indices) {
+  unsigned L = parameters.Get<unsigned>("L_search");
+  DistanceFastL2 *dist_fast = (DistanceFastL2 *)distance_;
+
+  std::vector<Neighbor> retset(L + 1);
+  std::vector<unsigned> init_ids(L);
+  std::mt19937 rng(rand());
+  GenRandom(rng, init_ids.data(), L, (unsigned)nd_);
+  assert(eps_.size() < L);
+  for(unsigned i=0; i<eps_.size(); i++){
+    init_ids[i] = eps_[i];
+  }
+
+  // 使用bitmap 优化 列表，节省内存和提升效率。
+  boost::dynamic_bitset<> flags{nd_, 0};
+  for (unsigned i = 0; i < init_ids.size(); i++) {
+    unsigned id = init_ids[i];
+    if (id >= nd_) continue;
+    _mm_prefetch(opt_graph_ + node_size * id, _MM_HINT_T0);
+  }
+  L = 0;
+  for (unsigned i = 0; i < init_ids.size(); i++) {
+    unsigned id = init_ids[i];
+    if (id >= nd_) continue;
+    float *x = (float *)(opt_graph_ + node_size * id);
+    float norm_x = *x;
+    x++;
+    float dist = dist_fast->compare(x, query, norm_x, (unsigned)dimension_);
+    retset[i] = Neighbor(id, dist, true);
+    flags[id] = true;
+    L++;
+  }
+  // std::cout<<L<<std::endl;
+
+  std::sort(retset.begin(), retset.begin() + L);
+  int k = 0;
+  while (k < (int)L) {
+    int nk = L;
+
+    if (retset[k].flag) {
+      retset[k].flag = false;
+      unsigned n = retset[k].id;
+
+      _mm_prefetch(opt_graph_ + node_size * n + data_len, _MM_HINT_T0);
+      unsigned *neighbors = (unsigned *)(opt_graph_ + node_size * n + data_len);
+      unsigned MaxM = *neighbors;
+      neighbors++;
+      for (unsigned m = 0; m < MaxM; ++m)
+        _mm_prefetch(opt_graph_ + node_size * neighbors[m], _MM_HINT_T0);
+
+      // 处理每个邻居，判断是否需要
+      for (unsigned m = 0; m < MaxM; ++m) {
+        unsigned id = neighbors[m];
+        // 在此处增加，判断不满足过滤条件直接忽略
+        if (flags[id] || !condition[id]) continue;
+        flags[id] = 1;
+        float *data = (float *)(opt_graph_ + node_size * id);
+        float norm = *data;
+        data++;
+        float dist =
+            dist_fast->compare(query, data, norm, (unsigned)dimension_);
+        if (dist >= retset[L - 1].distance) continue;
+        Neighbor nn(id, dist, true);
+        int r = InsertIntoPool(retset.data(), L, nn);
+
+        // if(L+1 < retset.size()) ++L;
+        if (r < nk) nk = r;
+      }
+    }
+    if (nk <= k)
+      k = nk;
+    else
+      ++k;
+  }
+  for (size_t i = 0; i < K; i++) {
+    indices[i] = retset[i].id;
+  }
+}
+
+void IndexSSG::TolerantFilterSearchWithOptGraph(const float *query, size_t K,
+                                  const Parameters &parameters,
+                                  unsigned *indices, float threshold) {}
+
 /**
  * 优化底层数据存储结构，
  * 多少个顶点 X 每个顶点占用的内存长度（顶点自生的数据 + 最多邻居 一起占用的内存长度）
 */
 void IndexSSG::OptimizeGraph(const float *data) {  // use after build or load
-
+  std::cout << "optimize graph" << std::endl;
   data_ = data;
-  data_len = (dimension_ + 1) * sizeof(float);
-  neighbor_len = (width + 1) * sizeof(unsigned);
-  node_size = data_len + neighbor_len;  // 当前点的id，向量数据 + 邻居长度
+  data_len = (dimension_ + 1) * sizeof(float); // id号 + 每维度的数据
+  neighbor_len = (width + 1) * sizeof(unsigned); // 邻居个数 + 邻居id
+  node_size = data_len + neighbor_len;  // 每个节点需要的内存
   opt_graph_ = (char *)malloc(node_size * nd_); 
   DistanceFastL2 *dist_fast = (DistanceFastL2 *)distance_;
   for (unsigned i = 0; i < nd_; i++) {
-    char *cur_node_offset = opt_graph_ + i * node_size;  //对于第i个顶点，起始内存地址。
-    float cur_norm = dist_fast->norm(data_ + i * dimension_, dimension_); // TODO： 什么意思？？？id为什么算norm？？？
+    char *cur_node_offset = opt_graph_ + i * node_size;  //第i个顶点的起始内存地址
+    float cur_norm = dist_fast->norm(data_ + i * dimension_, dimension_); // 计算第i个向量的L2范数平方。
     std::memcpy(cur_node_offset, &cur_norm, sizeof(float));  // 移动id到优化的图结构中。
     std::memcpy(cur_node_offset + sizeof(float), data_ + i * dimension_,
                 data_len - sizeof(float));  //将数据移动到优化的图结构中。
@@ -610,6 +711,22 @@ void IndexSSG::OptimizeGraph(const float *data) {  // use after build or load
   }
   CompactGraph().swap(final_graph_);
 }
+
+// void IndexSSG::SaveOptimizeGraph(const char *filename) {
+//   std::ofstream out(filename, std::ios::binary | std::ios::out);
+//   std::cout << "Saving index, final_graph_.size= " << final_graph_.size() << ", nd_=" << nd_ << std::endl;
+
+//   out.write((char *)&width, sizeof(unsigned));
+//   unsigned n_ep=eps_.size();
+//   out.write((char *)&n_ep, sizeof(unsigned));
+//   out.write((char *)eps_.data(), n_ep*sizeof(unsigned));
+//   for (unsigned i = 0; i < nd_; i++) {
+//     unsigned GK = (unsigned)final_graph_[i].size();
+//     out.write((char *)&GK, sizeof(unsigned));
+//     out.write((char *)final_graph_[i].data(), GK * sizeof(unsigned));
+//   }
+//   out.close();
+// }
 
 void IndexSSG::DFS(boost::dynamic_bitset<> &flag,
                    std::vector<std::pair<unsigned, unsigned>> &edges,
