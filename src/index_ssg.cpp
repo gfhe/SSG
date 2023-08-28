@@ -603,6 +603,8 @@ void IndexSSG::FilterSearchWithOptGraph(const float *query, size_t K,
   unsigned L = parameters.Get<unsigned>("L_search");
   DistanceFastL2 *dist_fast = (DistanceFastL2 *)distance_;
 
+  std::cout << "into FilterSearchWithOptGraph " << std::endl;
+
   std::vector<Neighbor> retset(L + 1);
   std::vector<unsigned> init_ids(L);
   std::mt19937 rng(rand());
@@ -612,6 +614,7 @@ void IndexSSG::FilterSearchWithOptGraph(const float *query, size_t K,
     init_ids[i] = eps_[i];
   }
 
+  std::cout << "process eps" << std::endl;
   // 使用bitmap 优化 列表，节省内存和提升效率。
   boost::dynamic_bitset<> flags{nd_, 0};
   for (unsigned i = 0; i < init_ids.size(); i++) {
@@ -632,7 +635,7 @@ void IndexSSG::FilterSearchWithOptGraph(const float *query, size_t K,
     L++;
   }
   // std::cout<<L<<std::endl;
-
+  std::cout << "route begain..." << std::endl;
   std::sort(retset.begin(), retset.begin() + L);
   int k = 0;
   while (k < (int)L) {
@@ -641,6 +644,7 @@ void IndexSSG::FilterSearchWithOptGraph(const float *query, size_t K,
     if (retset[k].flag) {
       retset[k].flag = false;
       unsigned n = retset[k].id;
+      std::cout << "key node: "<< n << std::endl;
 
       _mm_prefetch(opt_graph_ + node_size * n + data_len, _MM_HINT_T0);
       unsigned *neighbors = (unsigned *)(opt_graph_ + node_size * n + data_len);
@@ -653,6 +657,7 @@ void IndexSSG::FilterSearchWithOptGraph(const float *query, size_t K,
       for (unsigned m = 0; m < MaxM; ++m) {
         unsigned id = neighbors[m];
         // 在此处增加，判断不满足过滤条件直接忽略
+        std::cout<<"id="<<id<<", flags[id]="<< flags[id]<<", condition[id]="<<condition[id]<<std::endl;
         if (flags[id] || !condition[id]) continue;
         flags[id] = 1;
         float *data = (float *)(opt_graph_ + node_size * id);
