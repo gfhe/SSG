@@ -6,3 +6,4 @@ graphs/
 sift1m/
 pyssg.egg-info/
 data/
+.gitpod.yml
